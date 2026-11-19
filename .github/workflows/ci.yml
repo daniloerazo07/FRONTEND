@@ -82,7 +82,9 @@ jobs:
       - name: Serve and smoke-test frontend
         shell: bash
         run: |
-          python3 -m http.server 4173 --directory dist > server.log 2>&1 &
+          mkdir -p preview/FRONTEND
+          cp -R dist/. preview/FRONTEND/
+          python3 -m http.server 4173 --directory preview > server.log 2>&1 &
           echo $! > server.pid
           for attempt in {1..20}; do
             if curl --fail --silent --show-error http://127.0.0.1:4173/FRONTEND/ > response.html; then
