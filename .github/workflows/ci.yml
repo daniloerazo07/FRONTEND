@@ -53,6 +53,7 @@ jobs:
         shell: bash
         run: |
           if grep -RniE \
+            --exclude-dir=.git \
             --exclude-dir=node_modules \
             --exclude-dir=dist \
             --exclude='*.lock' \
@@ -61,7 +62,7 @@ jobs:
             echo "Possible hardcoded credential found in frontend source."
             exit 1
           fi
-          if grep -RniE --exclude-dir=node_modules --exclude-dir=dist \
+          if grep -RniE --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist \
             'postgres|DB_PASSWORD|DB_USER|ci_api_password' src index.html; then
             echo "Backend credentials or database usernames must not be shipped to the frontend."
             exit 1
