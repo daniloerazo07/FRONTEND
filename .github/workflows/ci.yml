@@ -1,0 +1,99 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Build, security and API contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate framework and libraries
+        run: |
+          node --version
+          npm ls --depth=0
+          node --input-type=module -e "
+            import packageJson from './package.json' with { type: 'json' };
+            if (!packageJson.dependencies?.vite) {
+              console.error('Vite is required to build the frontend.');
+              process.exit(1);
+            }
+            if (!packageJson.scripts?.build) {
+              console.error('A production build script is required.');
+              process.exit(1);
+            }
+          "
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Validate source security
+        shell: bash
+        run: |
+          if grep -RniE \
+            --exclude-dir=node_modules \
+            --exclude-dir=dist \
+            --exclude='*.lock' \
+            '(password|passwd|secret|token|api[_-]?key)[[:space:]]*[:=][[:space:]]*["'\''][^"'\'']+["'\'']' \
+            .; then
+            echo "Possible hardcoded credential found in frontend source."
+            exit 1
+          fi
+          if grep -RniE --exclude-dir=node_modules --exclude-dir=dist \
+            'postgres|DB_PASSWORD|DB_USER|ci_api_password' src index.html; then
+            echo "Backend credentials or database usernames must not be shipped to the frontend."
+            exit 1
+          fi
+
+      - name: Build for GitHub Pages
+        run: npm run build -- --base=/FRONTEND/
+
+      - name: Validate generated frontend and API contract
+        shell: bash
+        run: |
+          test -s dist/index.html
+          grep -q '/FRONTEND/' dist/index.html
+          grep -q 'api/v1' src/main.js
+          grep -q 'productos' src/main.js
+
+      - name: Serve and smoke-test frontend
+        shell: bash
+        run: |
+          python3 -m http.server 4173 --directory dist > server.log 2>&1 &
+          echo $! > server.pid
+          for attempt in {1..20}; do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/FRONTEND/ > response.html; then
+              break
+            fi
+            sleep 1
+          done
+          test -s response.html
+          grep -q '<title>Productos</title>' response.html
+
+      - name: Stop static server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then kill "$(cat server.pid)" || true; fi
+          if [ -f server.log ]; then cat server.log; fi
