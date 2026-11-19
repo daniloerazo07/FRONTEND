@@ -25,3 +25,9 @@ npm.cmd run preview
 ```
 
 La carpeta `dist` contiene los archivos estáticos que pueden publicarse en GitHub Pages.
+
+El workflow de GitHub Pages configura automáticamente la API pública:
+
+```text
+https://backend-5ssi.onrender.com/api/v1
+```
